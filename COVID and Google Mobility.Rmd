@@ -1,0 +1,835 @@
+---
+title: "QTM 151 Final Project"
+output: html_document
+---
+
+```{r}
+library(plyr)
+library(dplyr)
+library(tidyverse)
+library(shiny)
+library(data.table)
+library(stringr)
+library(usmap)
+library(scales)
+library(hrbrthemes)
+library(plotly)
+library(htmlwidgets)
+library(highcharter)
+library(rsconnect)
+library(housingData)
+library(maps)
+library(ggmap)
+```
+
+
+
+# Data - COVID by County
+
+## Import
+
+```{r}
+covid = read.csv('https://raw.githubusercontent.com/OpportunityInsights/EconomicTracker/main/data/COVID%20-%20County%20-%20Daily.csv')
+head(covid)
+```
+
+## Clean
+
+```{r}
+#date column - merge to one column as a date function
+covid1 = covid
+covid1$year = as.character(covid$year)
+covid1$month = as.character(covid$month)
+covid1$day = as.character(covid$day)
+covid1 = covid1 %>%
+  unite(Date, year, month, day, sep = "/", remove = FALSE)
+covid1$day = NULL
+covid1$month = NULL
+covid1$year = NULL
+covid1$Date = as.Date(covid1$Date)
+covid1
+```
+
+```{r}
+#clean column names
+colnames(covid1)[colnames(covid1) == "case_count"] <- "Case Count"
+colnames(covid1)[colnames(covid1) == "death_count"] <- "Death Count"
+colnames(covid1)[colnames(covid1) == "case_rate"] <- "Cumulative Cases Per 100K People"
+colnames(covid1)[colnames(covid1) == "death_rate"] <- "Cumulative Deaths Per 100K People"
+colnames(covid1)[colnames(covid1) == "new_case_rate"] <- "New Cases Per 100K People"
+colnames(covid1)[colnames(covid1) == "new_death_rate"] <- "New Deaths Per 100K People"
+colnames(covid1)[colnames(covid1) == "new_case_count"] <- "New Case Count"
+colnames(covid1)[colnames(covid1) == "new_death_count"] <- "New Death Count"
+covid1
+```
+
+```{r}
+#add county name
+
+#add leading zero to fips = must be 5 digits
+covid2 = covid1
+covid2$countyfips = sprintf("%05d", covid2$countyfips)
+
+fipsfull = fips_info(covid2$countyfips)
+
+covid3 = left_join(covid2, fipsfull, by=c("countyfips"="fips"))
+covid3$abbr = NULL
+covid3$countyfips = NULL
+colnames(covid3)[colnames(covid3) == "full"] <- "State"
+colnames(covid3)[colnames(covid3) == "county"] <- "County"
+covid3
+```
+
+```{r}
+covid3$`Death Count` = as.numeric(covid3$`Death Count`)
+covid3$`Cumulative Cases Per 100K People` = as.numeric(covid3$`Cumulative Cases Per 100K People`)
+covid3$`Cumulative Deaths Per 100K People` = as.numeric(covid3$`Cumulative Deaths Per 100K People`)
+covid3$`New Cases Per 100K People` = as.numeric(covid3$`New Cases Per 100K People`)
+covid3$`Case Count` = as.numeric(covid3$`Case Count`)
+covid3$`New Deaths Per 100K People` = as.numeric(covid3$`New Deaths Per 100K People`)
+covid3$`New Case Count` = as.numeric(covid3$`New Case Count`)
+covid3$`New Death Count` = as.numeric(covid3$`New Death Count`)
+covid3
+```
+
+```{r}
+#format
+
+covid4 = pivot_longer(covid3, 2:9, names_to = "Variable", values_to = "Value")
+covid4
+```
+
+
+
+# Data - Google Mobility
+
+## Import data
+
+```{r}
+gmob = read.csv('https://raw.githubusercontent.com/OpportunityInsights/EconomicTracker/main/data/Google%20Mobility%20-%20County%20-%20Daily.csv')
+head(gmob)
+```
+
+## Clean data
+
+```{r}
+#date column - merge to one column as a date function
+gmob1 = gmob
+gmob1$year = as.character(gmob$year)
+gmob1$month = as.character(gmob$month)
+gmob1$day = as.character(gmob$day)
+gmob1 = gmob1 %>%
+  unite(Date, year, month, day, sep = "/", remove = FALSE)
+gmob1$day = NULL
+gmob1$month = NULL
+gmob1$year = NULL
+gmob1$Date = as.Date(gmob1$Date)
+gmob1
+```
+
+
+```{r}
+#clean column names
+colnames(gmob1)[colnames(gmob1) == "gps_retail_and_recreation"] <- "Retail and Recreation"
+colnames(gmob1)[colnames(gmob1) == "gps_grocery_and_pharmacy"] <- "Grocery and Pharmacy"
+colnames(gmob1)[colnames(gmob1) == "gps_parks"] <- "Parks"
+colnames(gmob1)[colnames(gmob1) == "gps_transit_stations"] <- "Transit Stations"
+colnames(gmob1)[colnames(gmob1) == "gps_workplaces"] <- "Workplaces"
+colnames(gmob1)[colnames(gmob1) == "gps_residential"] <- "At Home"
+colnames(gmob1)[colnames(gmob1) == "gps_away_from_home"] <- "Away From Home"
+gmob1
+```
+
+```{r}
+#add county name
+
+#add leading zero to fips = must be 5 digits
+gmob2 = gmob1
+gmob2$countyfips = sprintf("%05d", gmob2$countyfips)
+
+fipsfull = fips_info(gmob2$countyfips)
+
+gmob3 = left_join(gmob2, fipsfull, by=c("countyfips"="fips"))
+gmob3$abbr = NULL
+gmob3$countyfips = NULL
+colnames(gmob3)[colnames(gmob3) == "full"] <- "State"
+colnames(gmob3)[colnames(gmob3) == "county"] <- "County"
+gmob3
+```
+```{r}
+gmob3$`Retail and Recreation` = as.numeric(gmob3$`Retail and Recreation`)
+gmob3$`Grocery and Pharmacy` = as.numeric(gmob3$`Grocery and Pharmacy`)
+gmob3$Parks = as.numeric(gmob3$Parks)
+gmob3$`Transit Stations` = as.numeric(gmob3$`Transit Stations`)
+gmob3$Workplaces = as.numeric(gmob3$Workplaces)
+gmob3$`At Home` = as.numeric(gmob3$`At Home`)
+gmob3$`Away From Home` = as.numeric(gmob3$`Away From Home`)
+gmob3
+```
+
+```{r}
+#format
+
+gmob4 = pivot_longer(gmob3, 2:8, names_to = "Variable", values_to = "Value")
+gmob4
+```
+
+# Visualize
+
+## COVID Data
+
+```{r}
+#Georgia COVID Variables Over Time - trend line
+
+covid5 = covid4 %>%
+  filter(State == "Georgia")
+covid5
+
+shinyApp(
+  ui = pageWithSidebar(
+        headerPanel("Georgia COVID Variables by County Over Time"),
+        sidebarPanel(
+         uiOutput("select_County"),
+         uiOutput("select_Variable"),
+                  dateRangeInput(inputId = "select_Date",
+              strong("Date Range"),
+             start = min(covid5$Date), end = max(covid5$Date),
+              min = min(covid5$Date), max = max(covid5$Date))
+          ),
+           mainPanel(
+             plotlyOutput("Plot_County"))
+ 
+           
+  ),
+ 
+server = function(input, output, session) {
+  
+ 
+    tab <- reactive({
+         
+         covid5 %>%
+         filter(County == input$select_County) %>%
+         filter(Variable == input$select_Variable) %>%
+          filter(between(Date,input$select_Date[1], input$select_Date[2]))
+          
+    })
+    
+      output$select_County <- renderUI({
+     
+      selectInput('select_County', 'Select County', choices = c("Select" = "", unique(covid5$County)), selectize = TRUE, multiple = FALSE, selected = "Fulton County")
+     
+    })
+   
+   
+    
+   
+    output$select_Variable <- renderUI ({
+      
+      
+      selectInput('select_Variable', 'Select Variable', choices = c("Select" = "", unique(covid5$Variable)), selectize = TRUE, multiple = FALSE, selected = "Cumulative Cases Per 100K People")
+   
+    })
+   
+ 
+    
+    output$Plot_County <- renderPlotly({
+                validate(
+      need(input$select_County != '', 'Please select a county.'),
+      need(input$select_Variable != '', 'Please select at least one variable.')
+    )
+      ggplotly(ggplot(tab(), aes(x = `Date`, y = `Value`, group = `Variable`)) +
+    geom_line(aes(color=`Variable`)) +
+    labs(x = "Date",
+       y = "Value",
+       color = "Variable") +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)))
+      })
+
+     
+    
+    
+ }
+ 
+)
+```
+
+
+```{r}
+#map visualization
+covid6 = left_join(covid4, geoCounty, by = c("County" = "county"))
+
+covid7 = covid6 %>%
+  filter(Variable == "New Cases Per 100K People") %>%
+  filter(Date >= as.POSIXct('2020-11-01')) %>%
+  group_by(County, lat, lon) %>%
+  summarise(average = mean(Value))
+covid7
+```
+
+```{r}
+us <- c(left = -125, bottom = 25.75, right = -67, top = 49)
+map <- get_stamenmap(us, zoom = 5, maptype = "toner-lite")
+
+ggmap(map) + geom_point(data=covid7,
+        aes(x=lon, y=lat, color=average),na.rm = T) +
+        scale_color_gradient(low = "green", high="red") +
+    ggtitle("New Cases Per 100K People - Month of November (Average)")
+```
+
+
+## Google Mobility
+
+```{r}
+#Georgia Mobility Variables Over Time - trend line
+
+gmob5 = gmob4 %>%
+  filter(State == "Georgia")
+gmob5
+
+shinyApp(
+  ui = pageWithSidebar(
+        headerPanel("Georgia Mobility Variables by County Over Time"),
+        sidebarPanel(
+         uiOutput("select_County"),
+         uiOutput("select_Variable"),
+                  dateRangeInput(inputId = "select_Date",
+              strong("Date Range"),
+             start = min(gmob5$Date), end = max(gmob5$Date),
+              min = min(gmob5$Date), max = max(gmob5$Date))
+          ),
+           mainPanel(
+             plotlyOutput("Plot_County"))
+ 
+           
+  ),
+ 
+server = function(input, output, session) {
+  
+ 
+    tab <- reactive({
+         
+         gmob5 %>%
+         filter(County == input$select_County) %>%
+         filter(Variable == input$select_Variable) %>%
+          filter(between(Date,input$select_Date[1], input$select_Date[2]))
+          
+    })
+    
+      output$select_County <- renderUI({
+     
+      selectInput('select_County', 'Select County', choices = c("Select" = "", unique(gmob5$County)), selectize = TRUE, multiple = FALSE, selected = "Fulton County")
+     
+    })
+   
+   
+    
+   
+    output$select_Variable <- renderUI ({
+      
+      
+      selectInput('select_Variable', 'Select Variable', choices = c("Select" = "", unique(gmob5$Variable)), selectize = TRUE, multiple = TRUE, selected = "Away From Home")
+   
+    })
+   
+ 
+    
+    output$Plot_County <- renderPlotly({
+                validate(
+      need(input$select_County != '', 'Please select a county.'),
+      need(input$select_Variable != '', 'Please select at least one variable.')
+    )
+      ggplotly(ggplot(tab(), aes(x = `Date`, y = `Value`, group = `Variable`)) +
+    geom_line(aes(color=`Variable`)) +
+    labs(x = "Date",
+       y = "Value",
+       color = "Variable") +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)))
+      })
+
+     
+    
+    
+ }
+ 
+)
+```
+
+
+```{r}
+#map visualization
+gmob6 = left_join(gmob4, geoCounty, by = c("County" = "county"))
+gmob6
+
+gmob7 = gmob6 %>%
+  filter(Variable == "Away From Home") %>%
+  filter(Date >= as.POSIXct('2020-11-01')) %>%
+  group_by(County, lat, lon) %>%
+  summarise(average = mean(Value))
+gmob7
+```
+
+```{r}
+us <- c(left = -125, bottom = 25.75, right = -67, top = 49)
+map <- get_stamenmap(us, zoom = 5, maptype = "toner-lite")
+
+ggmap(map) + geom_point(data=gmob7,
+        aes(x=lon, y=lat, color=average),na.rm = T) +
+        scale_color_gradient(low = "green", high="red") +
+    ggtitle("Time Spent Away From Home - Month of November (Average)")
+```
+
+# Correlation?
+
+## Month of November
+
+```{r}
+#correlation between case rate and time away from home for the month of November
+
+covid8 = covid4 %>%
+  filter(Variable == "New Cases Per 100K People") %>%
+  filter(Date >= as.POSIXct('2020-11-01')) %>%
+  group_by(State, County) %>%
+  summarise(average = mean(Value)) %>%
+  arrange(desc(average)) 
+
+#100 Counties with highest case rate
+covid9 = covid8[1:100,]
+
+gmob8 = gmob4 %>%
+  filter(Variable == "Away From Home") %>%
+  filter(Date >= as.POSIXct('2020-11-01')) %>%
+  group_by(State, County) %>%
+  summarise(average = mean(Value)) %>%
+  arrange(desc(average)) 
+
+#100 Counties with most time away from home
+gmob9 = gmob8[1:100,]
+
+correl1 = semi_join(covid9, gmob9, by = "County")
+correl1
+
+#Fifteen overlaps out of 100
+
+
+#25 Counties with highest case rate
+covid9 = covid8[1:25,]
+
+#25 Counties with most time away from home
+gmob9 = gmob8[1:25,]
+
+correl1 = semi_join(covid9, gmob9, by = "County")
+correl1
+
+#Three overlaps out of 25
+```
+
+```{r}
+#correlation between death rate and time at away from homefor the month of November
+
+covid8 = covid4 %>%
+  filter(Variable == "New Deaths Per 100K People") %>%
+  filter(Date >= as.POSIXct('2020-11-01')) %>%
+  group_by(State, County) %>%
+  summarise(average = mean(Value)) %>%
+  arrange(desc(average)) 
+
+#100 Counties with highest case rate
+covid8 = covid8[1:100,]
+
+gmob8 = gmob4 %>%
+  filter(Variable == "Away From Home") %>%
+  filter(Date >= as.POSIXct('2020-11-01')) %>%
+  group_by(State, County) %>%
+  summarise(average = mean(Value)) %>%
+  arrange(desc(average)) 
+
+#100 Counties with most time at workplaces
+gmob8 = gmob8[1:100,]
+
+correl1 = semi_join(covid8, gmob8, by = "County")
+correl1
+
+#Twelve overlaps
+
+#25 Counties with highest case rate
+covid8 = covid8[1:25,]
+
+#25 Counties with most time at workplaces
+gmob8 = gmob8[1:25,]
+
+correl1 = semi_join(covid8, gmob8, by = "County")
+correl1
+
+#No overlap
+```
+
+```{r}
+#correlation between case rate and time at workplaces for the month of November
+
+covid8 = covid4 %>%
+  filter(Variable == "New Cases Per 100K People") %>%
+  filter(Date >= as.POSIXct('2020-11-01')) %>%
+  group_by(State, County) %>%
+  summarise(average = mean(Value)) %>%
+  arrange(desc(average)) 
+
+#100 Counties with highest case rate
+covid9 = covid8[1:100,]
+
+gmob9 = gmob4 %>%
+  filter(Variable == "Workplaces") %>%
+  filter(Date >= as.POSIXct('2020-11-01')) %>%
+  group_by(State, County) %>%
+  summarise(average = mean(Value)) %>%
+  arrange(desc(average)) 
+
+#100 Counties with most time at workplaces
+gmob9 = gmob8[1:100,]
+
+correl1 = semi_join(covid9, gmob9, by = "County")
+correl1
+
+#Five overlaps
+
+#25 Counties with highest case rate
+covid9 = covid8[1:25,]
+
+#25 Counties with most time at workplaces
+gmob9 = gmob8[1:25,]
+
+correl1 = semi_join(covid9, gmob9, by = "County")
+correl1
+
+#Three overlaps out of 25
+```
+
+
+```{r}
+#correlation between death rate and time at workplaces for the month of November
+covid8 = covid4 %>%
+  filter(Variable == "New Deaths Per 100K People") %>%
+  filter(Date >= as.POSIXct('2020-11-01')) %>%
+  group_by(State, County) %>%
+  summarise(average = mean(Value)) %>%
+  arrange(desc(average)) 
+
+#100 Counties with highest death rate
+covid8 = covid8[1:100,]
+
+gmob8 = gmob4 %>%
+  filter(Variable == "Workplaces") %>%
+  filter(Date >= as.POSIXct('2020-11-01')) %>%
+  group_by(State, County) %>%
+  summarise(average = mean(Value)) %>%
+  arrange(desc(average)) 
+
+#100 Counties with most time at workplaces
+gmob8 = gmob8[1:100,]
+
+correl1 = semi_join(covid8, gmob8, by = "County")
+correl1
+
+#Twelve Overlaps
+
+#25 Counties with highest death rate
+covid8 = covid8[1:25,]
+
+#25 Counties with most time at workplaces
+gmob8 = gmob8[1:25,]
+
+correl1 = semi_join(covid8, gmob8, by = "County")
+correl1
+
+#no overlap
+```
+
+
+
+## Cumulative Case Rate 
+
+```{r}
+#correlation between cumulative case rate and average time away from home
+
+covid8 = covid4 %>%
+  filter(Variable == "Cumulative Cases Per 100K People") %>%
+  group_by(State, County) %>%
+  summarise(average = mean(Value)) %>%
+  arrange(desc(average)) 
+
+#100 Counties with highest case rate
+covid8 = covid8[1:100,]
+
+gmob8 = gmob4 %>%
+  filter(Variable == "Away From Home") %>%
+  group_by(State, County) %>%
+  summarise(average = mean(Value)) %>%
+  arrange(desc(average)) 
+
+#100 Counties with most time at workplaces
+gmob8 = gmob8[1:100,]
+
+correl1 = semi_join(covid8, gmob8, by = "County")
+correl1
+
+#Eighteen overlaps = strong correlation
+
+#25 Counties with highest case rate
+covid8 = covid8[1:25,]
+
+#25 Counties with most time at workplaces
+gmob8 = gmob8[1:25,]
+
+correl1 = semi_join(covid8, gmob8, by = "County")
+correl1
+
+#one overlap
+```
+
+
+```{r}
+#correlation between cumulative death rate and average time away from home
+
+covid8 = covid4 %>%
+  filter(Variable == "Cumulative Deaths Per 100K People") %>%
+  group_by(County, State) %>%
+  summarise(average = mean(Value)) %>%
+  arrange(desc(average)) 
+
+#100 Counties with highest case rate
+covid8 = covid8[1:100,]
+
+gmob8 = gmob4 %>%
+  filter(Variable == "Away From Home") %>%
+  group_by(County, State) %>%
+  summarise(average = mean(Value)) %>%
+  arrange(desc(average)) 
+
+#100 Counties with most time at workplaces
+gmob8 = gmob8[1:100,]
+
+correl1 = semi_join(covid8, gmob8, by = "County")
+correl1
+
+#Five overlaps
+
+#25 Counties with highest case rate
+covid8 = covid8[1:25,]
+
+#25 Counties with most time at workplaces
+gmob8 = gmob8[1:25,]
+
+correl1 = semi_join(covid8, gmob8, by = "County")
+correl1
+
+#One overlap
+```
+
+
+
+
+# COVID - State level data
+
+```{r}
+covidstate = read.csv('https://raw.githubusercontent.com/OpportunityInsights/EconomicTracker/main/data/COVID%20-%20State%20-%20Daily.csv')
+covidstate
+```
+
+## Clean
+
+```{r}
+#date column - merge to one column as a date function
+covidstate1 = covidstate
+covidstate1$year = as.character(covidstate$year)
+covidstate1$month = as.character(covidstate$month)
+covidstate1$day = as.character(covidstate$day)
+covidstate1 = covidstate1 %>%
+  unite(Date, year, month, day, sep = "/", remove = FALSE)
+covidstate1$day = NULL
+covidstate1$month = NULL
+covidstate1$year = NULL
+covidstate1$Date = as.Date(covidstate1$Date)
+covidstate1
+```
+
+```{r}
+#clean column names
+colnames(covidstate1)[colnames(covidstate1) == "case_count"] <- "Case Count"
+colnames(covidstate1)[colnames(covidstate1) == "death_count"] <- "Death Count"
+colnames(covidstate1)[colnames(covidstate1) == "case_rate"] <- "Cumulative Cases Per 100K People"
+colnames(covidstate1)[colnames(covidstate1) == "death_rate"] <- "Cumulative Deaths Per 100K People"
+colnames(covidstate1)[colnames(covidstate1) == "new_case_rate"] <- "New Cases Per 100K People"
+colnames(covidstate1)[colnames(covidstate1) == "new_death_rate"] <- "New Deaths Per 100K People"
+colnames(covidstate1)[colnames(covidstate1) == "new_case_count"] <- "New Case Count"
+colnames(covidstate1)[colnames(covidstate1) == "new_death_count"] <- "New Death Count"
+colnames(covidstate1)[colnames(covidstate1) == "new_test_count"] <- "New Test Count"
+colnames(covidstate1)[colnames(covidstate1) == "new_test_rate"] <- "New Tests Per 100K People"
+colnames(covidstate1)[colnames(covidstate1) == "test_count"] <- "Cumulative Test Count"
+colnames(covidstate1)[colnames(covidstate1) == "test_rate"] <- "Cumulative Test Per 100K People"
+colnames(covidstate1)[colnames(covidstate1) == "new_positives_rate"] <- "New Positive Tests Per 100K People"
+
+covidstate1
+```
+
+
+```{r}
+#add state name
+
+#add leading zero to fips = must be 5 digits
+covidstate2 = covidstate1
+covidstate2$statefips = sprintf("%02d", covidstate2$statefips)
+
+fipsfull = fips_info(covidstate2$statefips)
+
+covidstate3 = left_join(covidstate2, fipsfull, by=c("statefips"="fips"))
+covidstate3$abbr = NULL
+covidstate3$statefips = NULL
+colnames(covidstate3)[colnames(covidstate3) == "full"] <- "State"
+covidstate3
+```
+
+
+```{r}
+covidstate3$`Death Count` = as.numeric(covidstate3$`Death Count`)
+covidstate3$`Cumulative Cases Per 100K People` = as.numeric(covidstate3$`Cumulative Cases Per 100K People`)
+covidstate3$`Cumulative Deaths Per 100K People` = as.numeric(covidstate3$`Cumulative Deaths Per 100K People`)
+covidstate3$`New Cases Per 100K People` = as.numeric(covidstate3$`New Cases Per 100K People`)
+covidstate3$`Case Count` = as.numeric(covidstate3$`Case Count`)
+covidstate3$`New Deaths Per 100K People` = as.numeric(covidstate3$`New Deaths Per 100K People`)
+covidstate3$`New Case Count` = as.numeric(covidstate3$`New Case Count`)
+covidstate3$`New Death Count` = as.numeric(covidstate3$`New Death Count`)
+covidstate3$`Cumulative Test Count` = as.numeric(covidstate3$`Cumulative Test Count`)
+covidstate3$`Cumulative Test Per 100K People` = as.numeric(covidstate3$`Cumulative Test Per 100K People`)
+covidstate3$`New Tests Per 100K People` = as.numeric(covidstate3$`New Tests Per 100K People`)
+covidstate3$`New Test Count` = as.numeric(covidstate3$`New Test Count`)
+covidstate3$`New Positive Tests Per 100K People` = as.numeric(covidstate3$`New Positive Tests Per 100K People`)
+covidstate3
+```
+
+```{r}
+#format
+
+covidstate4 = pivot_longer(covidstate3, 2:14, names_to = "Variable", values_to = "Value")
+covidstate4
+```
+
+#Google Mobility - State level data
+
+```{r}
+gmobstate = read.csv('https://raw.githubusercontent.com/OpportunityInsights/EconomicTracker/main/data/Google%20Mobility%20-%20State%20-%20Daily.csv')
+gmobstate
+```
+
+## Clean data
+
+```{r}
+#date column - merge to one column as a date function
+gmobstate1 = gmobstate
+gmobstate1$year = as.character(gmobstate$year)
+gmobstate1$month = as.character(gmobstate$month)
+gmobstate1$day = as.character(gmobstate$day)
+gmobstate1 = gmobstate1 %>%
+  unite(Date, year, month, day, sep = "/", remove = FALSE)
+gmobstate1$day = NULL
+gmobstate1$month = NULL
+gmobstate1$year = NULL
+gmobstate1$Date = as.Date(gmobstate1$Date)
+gmobstate1
+```
+
+
+```{r}
+#clean column names
+colnames(gmobstate1)[colnames(gmobstate1) == "gps_retail_and_recreation"] <- "Retail and Recreation"
+colnames(gmobstate1)[colnames(gmobstate1) == "gps_grocery_and_pharmacy"] <- "Grocery and Pharmacy"
+colnames(gmobstate1)[colnames(gmobstate1) == "gps_parks"] <- "Parks"
+colnames(gmobstate1)[colnames(gmobstate1) == "gps_transit_stations"] <- "Transit Stations"
+colnames(gmobstate1)[colnames(gmobstate1) == "gps_workplaces"] <- "Workplaces"
+colnames(gmobstate1)[colnames(gmobstate1) == "gps_residential"] <- "At Home"
+colnames(gmobstate1)[colnames(gmobstate1) == "gps_away_from_home"] <- "Away From Home"
+gmobstate1
+```
+
+
+```{r}
+#add leading zero to fips = must be 5 digits
+gmobstate2 = gmobstate1
+gmobstate2$statefips = sprintf("%02d", gmobstate2$statefips)
+
+fipsfull = fips_info(gmobstate2$statefips)
+
+gmobstate3 = left_join(gmobstate2, fipsfull, by=c("statefips"="fips"))
+gmobstate3$abbr = NULL
+gmobstate3$statefips = NULL
+colnames(gmobstate3)[colnames(gmobstate3) == "full"] <- "State"
+gmobstate3
+```
+
+```{r}
+gmobstate3$`Retail and Recreation` = as.numeric(gmobstate3$`Retail and Recreation`)
+gmobstate3$`Grocery and Pharmacy` = as.numeric(gmobstate3$`Grocery and Pharmacy`)
+gmobstate3$Parks = as.numeric(gmobstate3$Parks)
+gmobstate3$`Transit Stations` = as.numeric(gmobstate3$`Transit Stations`)
+gmobstate3$Workplaces = as.numeric(gmobstate3$Workplaces)
+gmobstate3$`At Home` = as.numeric(gmobstate3$`At Home`)
+gmobstate3$`Away From Home` = as.numeric(gmobstate3$`Away From Home`)
+gmobstate3
+```
+
+```{r}
+#format
+
+gmobstate4 = pivot_longer(gmobstate3, 2:8, names_to = "Variable", values_to = "Value")
+options(scipen = 100000)
+gmobstate4
+```
+
+# Visualizations
+
+```{r}
+#covid heatmap - month of November 
+covidstate5 = covidstate4 %>%
+  filter(Date >= as.POSIXct('2020-11-01')) %>%
+  group_by(State, Variable) %>%
+  summarise(average = mean(Value)) %>%
+  arrange(desc(average)) 
+covidstate6 = ddply(covidstate5, .(Variable), transform, `Scale` = rescale(average))
+covidstate6
+```
+```{r}
+plot1 = ggplot(covidstate6, aes(y = fct_rev(State), x=Variable)) +
+  geom_tile(aes(fill = `Scale`), colour = "white") +
+  scale_fill_gradient(low = "white", high = "aquamarine3") +
+  aes(text = paste('</br>State: ', State,'</br>Variable: ',Variable, '</br>Value: ',average)) +
+   theme(axis.text.x = element_blank(),
+         axis.title.y = element_blank()) +
+  labs(title = "Variables by State")
+ 
+plot2 = ggplotly(plot1,tooltip = c("text"), width = 600, height = 600)
+plot2
+```
+
+```{r}
+#google mobility heatmap - month of November 
+gmobstate5 = gmobstate4 %>%
+  filter(Date >= as.POSIXct('2020-11-01')) %>%
+  group_by(State, Variable) %>%
+  summarise(average = mean(Value)) %>%
+  arrange(desc(average)) 
+gmobstate6 = ddply(gmobstate5, .(Variable), transform, `Scale` = rescale(average))
+gmobstate6
+```
+
+```{r}
+plot1 = ggplot(gmobstate6, aes(y = fct_rev(State), x=Variable)) +
+  geom_tile(aes(fill = `Scale`), colour = "white") +
+  scale_fill_gradient(low = "white", high = "aquamarine3") +
+  aes(text = paste('</br>State: ', State,'</br>Variable: ',Variable, '</br>Value: ',average)) +
+   theme(axis.text.x = element_blank(),
+         axis.title.y = element_blank()) +
+  labs(title = "Variables by State")
+ 
+plot2 = ggplotly(plot1,tooltip = c("text"), width = 600, height = 600)
+plot2
+```
